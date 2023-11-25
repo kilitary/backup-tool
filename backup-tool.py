@@ -1,12 +1,16 @@
 import os
+import random
 import shutil
 import sys
 from os.path import join, getsize
 import json
 from pprint import pprint
+import tempfile
 from os import scandir
 import configparser
 from shutil import copytree
+import time
+import subprocess
 import psutil
 
 config_file = "backup-tool.ini"
@@ -111,14 +115,31 @@ def process_directory(dir=None, current_dst='', current_src=""):
                 src = os.path.join(dir, entry.name)
                 # print(f'preparing to copy {src} to {dest_dir}')
                 process_directory(dir=src, current_dst=dest_dir, current_src=src_dir)
+
+                tmp_file = os.path.join(tempfile.gettempdir(), f'{time.time_ns()}.7z')
+                tmp_list = os.path.join(tempfile.gettempdir(), 'list.txt')
+
+                files = [file.path + '\n' for file in os.scandir(src) if file.is_file()]
+
+                with open(tmp_list, "wt") as f:
+                    f.writelines(files)
+
+                print(f'packing {src} ...')
+                p = subprocess.Popen(["7z", "a", "-r-", "-bb0", "-y", "-mx1", f"-i@{tmp_list}", tmp_file])
+                p.wait()
+                # subprocess.run(["7z", "a", tmp_file, f"{dest_dir}/*"], stderr=PIPE, stdout=PIPE)
+                final_archive = os.path.join(dest_dir, 'files.7z')
+                shutil.move(tmp_file, final_archive)
+                # sys.exit(0)
+
             else:
                 dest_dir = os.path.join(current_dst, dir[3:])
 
                 assert dest_dir.count(get_root_dest()) != 0, f'error: nocopy to {dest_dir}'
 
                 dest_file = os.path.join(current_dst, entry.name)
-                print(f'copy {entry.path} to {dest_file}')
-                copyfile(entry.path, dest_file)
+                # print(f'copy {entry.path} to {dest_file}')
+                # copyfile(entry.path, dest_file)
         except Exception as e:
             print(f'exception while copying dir {dir}: {e.errno} {e.strerror}', e)
             if e.errno == 28:
