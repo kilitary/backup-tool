@@ -16,6 +16,8 @@ import psutil
 config_file = "backup-tool.ini"
 current_root = ''
 config = configparser.ConfigParser()
+done_dirs = []
+dirs = []
 
 
 def pred(text, send=''):
@@ -67,6 +69,12 @@ def erase_dir(erase_dir=None):
     print('erase complete')
 
 
+def p_exit():
+    not_done = [d for d in dirs if d not in done_dirs]
+    print(f'done: {done_dirs} error: {not_done}')
+    sys.exit(0)
+
+
 def get_dir_setups():
     dirs = []
     for i, o in config["directories"].items():
@@ -98,7 +106,7 @@ def process_directory(dir=None, current_dst='', current_src=""):
         dirs = scandir(dir)
     except Exception as e:
         pred(f'scandir: {e}')
-        sys.exit(-1)
+        p_exit()
 
     # print(f'{current_src} => {current_dst}')
 
@@ -121,30 +129,33 @@ def process_directory(dir=None, current_dst='', current_src=""):
 
                 files = [file.path + '\n' for file in os.scandir(src) if file.is_file()]
 
+                if not len(files):
+                    continue
+
                 with open(tmp_list, "wt") as f:
                     f.writelines(files)
 
                 print(f'packing {src} ...')
-                p = subprocess.Popen(["7z", "a", "-r-", "-bb0", "-y", "-mx1", f"-i@{tmp_list}", tmp_file])
+                p = subprocess.Popen(["7z", "a", "-t7z", "-bb0", "-y", "-mx1", f"-i@{tmp_list}", tmp_file])
                 p.wait()
                 # subprocess.run(["7z", "a", tmp_file, f"{dest_dir}/*"], stderr=PIPE, stdout=PIPE)
                 final_archive = os.path.join(dest_dir, 'files.7z')
                 shutil.move(tmp_file, final_archive)
                 # sys.exit(0)
 
-            else:
-                dest_dir = os.path.join(current_dst, dir[3:])
-
-                assert dest_dir.count(get_root_dest()) != 0, f'error: nocopy to {dest_dir}'
-
-                dest_file = os.path.join(current_dst, entry.name)
-                # print(f'copy {entry.path} to {dest_file}')
-                # copyfile(entry.path, dest_file)
+            # else:
+            #     dest_dir = os.path.join(current_dst, dir[3:])
+            #
+            #     assert dest_dir.count(get_root_dest()) != 0, f'error: nocopy to {dest_dir}'
+            #
+            #     dest_file = os.path.join(current_dst, entry.name)
+            #     # print(f'copy {entry.path} to {dest_file}')
+            #     # copyfile(entry.path, dest_file)
         except Exception as e:
             print(f'exception while copying dir {dir}: {e.errno} {e.strerror}', e)
             if e.errno == 28:
                 pred(f'storage exhaused')
-                sys.exit(-1)
+                p_exit()
             continue
 
 
@@ -200,6 +211,7 @@ if __name__ == '__main__':
     set_prio()
 
     dirs = get_dir_setups()
+
     for root_path, dst_path in dirs:
         dest = os.path.join(get_root_dest(), dst_path)
 
@@ -210,3 +222,7 @@ if __name__ == '__main__':
             erase_dir(dest)
 
         process_directory(dir=None, current_src=root_path, current_dst=dest)
+
+        done_dirs.append(root_path)
+
+    p_exit()
