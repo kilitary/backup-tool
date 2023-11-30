@@ -12,6 +12,8 @@ from shutil import copytree
 import time
 import subprocess
 import psutil
+import atexit
+import glob
 
 config_file = "backup-tool.ini"
 current_root = ''
@@ -95,8 +97,11 @@ def get_root_dest():
 
 
 def pack_files(dest_dir, src):
-    tmp_file = os.path.join(tempfile.gettempdir(), f'{time.time_ns()}.7z')
-    tmp_list = os.path.join(tempfile.gettempdir(), 'list.txt')
+    temp_dst = os.path.join(tempfile.gettempdir(), 'backup-tool')
+    make_directories(temp_dst)
+
+    tmp_file = os.path.join(tempfile.gettempdir(), 'backup-tool', f'{time.time_ns()}.tmp')
+    tmp_list = os.path.join(tempfile.gettempdir(), 'backup-tool', 'list.txt')
     final_archive = os.path.join(dest_dir, 'files.7z')
     files = [file.path + '\n' for file in os.scandir(src) if file.is_file()]
 
@@ -225,12 +230,26 @@ def set_prio():
         print(f'affinity/priority has been set to lowest')
 
 
+def remove_temps():
+    print(f'removing temps ... ', end='')
+    temps = glob.glob(os.path.join(tempfile.gettempdir(), 'backup-tool', '*.btf'))
+    for f in temps:
+        if os.path.isfile(f):
+            print(f'{f} ', end='')
+            os.remove(f)
+
+
+def setup_exiters():
+    atexit.register(remove_temps)
+
+
 if __name__ == '__main__':
     print(f'proc: {os.getpid()}')
 
     load_config()
     set_prio()
-
+    setup_exiters()
+    remove_temps()
     dirs = get_dir_setups()
 
     for root_path, dst_path in dirs:
