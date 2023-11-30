@@ -94,6 +94,31 @@ def get_root_dest():
     return config['settings']['dest']
 
 
+def pack_files(dest_dir, src):
+    tmp_file = os.path.join(tempfile.gettempdir(), f'{time.time_ns()}.7z')
+    tmp_list = os.path.join(tempfile.gettempdir(), 'list.txt')
+    final_archive = os.path.join(dest_dir, 'files.7z')
+    files = [file.path + '\n' for file in os.scandir(src) if file.is_file()]
+
+    if not len(files):
+        return
+
+    if os.path.exists(final_archive):
+        print(f'skip {final_archive}')
+        return
+
+    with open(tmp_list, "wt") as f:
+        f.writelines(files)
+
+    print(f'packing {len(files)} files in {src} ... ', end='')
+    p = subprocess.Popen(["7z", "a", "-t7z", "-bb0", "-y", "-mx1", f"-i@{tmp_list}", tmp_file])
+    p.wait()
+    print(f'moving ', end='')
+    shutil.move(tmp_file, final_archive)
+
+    print(f'done')
+
+
 def process_directory(dir=None, current_dst='', current_src=""):
     """
     copy directory (recursive)
@@ -103,45 +128,37 @@ def process_directory(dir=None, current_dst='', current_src=""):
     dir = current_src if dir is None else dir
 
     try:
-        dirs = scandir(dir)
+        pack_files(current_dst, dir)
+
+        dirs = os.scandir(dir)
     except Exception as e:
-        pred(f'scandir: {e}')
+        print(f'scandir {e.errno}: {e}')
+
+        if e.errno == 13:
+            print(f'access denied')
+            return
+
         p_exit()
 
     # print(f'{current_src} => {current_dst}')
 
     for entry in dirs:
         try:
-            if entry.is_dir() and entry.name not in [".", ".."]:
-                dest_dir = os.path.join(current_dst, entry.name)
-                current_root = dest_dir
+            if not entry.is_dir() or entry.name in [".", ".."]:
+                continue
 
-                assert dest_dir.count(get_root_dest()) != 0, f'error: nocopy to {dest_dir}'
-                make_directories(dest_dir)
-                src_dir = os.path.join(current_src, entry.name)
-                # copytree(src_dir, dest_dir, ignore=_logpath, dirs_exist_ok=True)
-                src = os.path.join(dir, entry.name)
-                # print(f'preparing to copy {src} to {dest_dir}')
-                process_directory(dir=src, current_dst=dest_dir, current_src=src_dir)
+            dest_dir = os.path.join(current_dst, entry.name)
+            current_root = dest_dir
 
-                tmp_file = os.path.join(tempfile.gettempdir(), f'{time.time_ns()}.7z')
-                tmp_list = os.path.join(tempfile.gettempdir(), 'list.txt')
+            assert dest_dir.count(get_root_dest()) != 0, f'error: nocopy to {dest_dir}'
+            make_directories(dest_dir)
+            src_dir = os.path.join(current_src, entry.name)
+            src = os.path.join(dir, entry.name)
+            process_directory(dir=src, current_dst=dest_dir, current_src=src_dir)
 
-                files = [file.path + '\n' for file in os.scandir(src) if file.is_file()]
+            pack_files(dest_dir, src)
 
-                if not len(files):
-                    continue
-
-                with open(tmp_list, "wt") as f:
-                    f.writelines(files)
-
-                print(f'packing {src} ...')
-                p = subprocess.Popen(["7z", "a", "-t7z", "-bb0", "-y", "-mx1", f"-i@{tmp_list}", tmp_file])
-                p.wait()
-                # subprocess.run(["7z", "a", tmp_file, f"{dest_dir}/*"], stderr=PIPE, stdout=PIPE)
-                final_archive = os.path.join(dest_dir, 'files.7z')
-                shutil.move(tmp_file, final_archive)
-                # sys.exit(0)
+            # sys.exit(0)
 
             # else:
             #     dest_dir = os.path.join(current_dst, dir[3:])
@@ -153,9 +170,13 @@ def process_directory(dir=None, current_dst='', current_src=""):
             #     # copyfile(entry.path, dest_file)
         except Exception as e:
             print(f'exception while copying dir {dir}: {e.errno} {e.strerror}', e)
+
             if e.errno == 28:
                 pred(f'storage exhaused')
                 p_exit()
+            if e.errno == 13:
+                print(f'access denied')
+
             continue
 
 
@@ -211,6 +232,10 @@ if __name__ == '__main__':
     set_prio()
 
     dirs = get_dir_setups()
+
+    for root_path, dst_path in dirs:
+        dest = os.path.join(get_root_dest(), dst_path)
+        print(f'archive {root_path} => {dest}')
 
     for root_path, dst_path in dirs:
         dest = os.path.join(get_root_dest(), dst_path)
