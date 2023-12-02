@@ -66,8 +66,8 @@ def erase_dir(erase_dir=None):
 
     print('erase complete')
 
-def p_exit():
-    not_done = [d for d in state.dirs if d not in state.done_dirs]
+def int_exit():
+    not_done = [s for s, d in state.dirs if s not in state.done_dirs]
     print(f'done: {state.done_dirs}\r\nerror: {not_done}')
     sys.exit(0)
 
@@ -134,7 +134,7 @@ def process_directory(dir=None, current_dst='', current_src=""):
             print(f'access denied')
             return
 
-        p_exit()
+        int_exit()
 
     # print(f'{current_src} => {current_dst}')
 
@@ -158,7 +158,7 @@ def process_directory(dir=None, current_dst='', current_src=""):
 
             if e.errno == 28:
                 pred(f'storage exhaused')
-                p_exit()
+                int_exit()
         except PermissionError as e:
             print(f'access denied')
             continue
@@ -176,7 +176,7 @@ def set_prio():
 
 def remove_temps():
     print(f'removing temps ... ', end='')
-    temps = glob.glob(os.path.join(tempfile.gettempdir(), 'backup-tool', '*.btf'))
+    temps = glob.glob(os.path.join(tempfile.gettempdir(), 'backup-tool', '*.tmp'))
     for f in temps:
         if os.path.isfile(f):
             print(f'{f} ', end='')
@@ -211,4 +211,4 @@ if __name__ == '__main__':
 
         state.done_dirs.append(root_path)
 
-    p_exit()
+    int_exit()
